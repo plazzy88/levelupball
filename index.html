@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Head Ball TG</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: #090c10;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            height: 100vh;
+            max-height: 450px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .ui-controls {
+            position: absolute;
+            bottom: 15px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            pointer-events: auto;
+        }
+        .btn {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.25);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(6px);
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            transition: transform 0.05s ease;
+        }
+        .btn:active { 
+            transform: scale(0.92);
+            background: rgba(255, 255, 255, 0.45); 
+        }
+        .btn-kick {
+            background: rgba(255, 71, 87, 0.5);
+            border-color: #ff4757;
+        }
+
+        .powers-ui {
+            position: absolute;
+            top: 15px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+        .btn-power {
+            width: 50px;
+            height: 50px;
+            background: rgba(0, 168, 255, 0.4);
+            border: 2px solid #00a8ff;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            transition: all 0.2s ease;
+        }
+        .btn-power:active { transform: scale(0.92); }
+        .btn-power.used {
+            opacity: 0.3;
+            filter: grayscale(1);
+            pointer-events: none;
+            border-color: #888;
+        }
+        #btn-bigball {
+            background: rgba(255, 127, 80, 0.4);
+            border-color: #ff7f50;
+        }
+
+        #game-over-modal {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(5, 10, 20, 0.88);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: white;
+            backdrop-filter: blur(8px);
+        }
+        #game-over-modal h1 {
+            font-size: 46px;
+            margin: 0 0 10px 0;
+            text-shadow: 0 0 15px rgba(255,255,255,0.3);
+        }
+        #game-over-modal p {
+            font-size: 26px;
+            margin: 0 0 25px 0;
+            color: #e2e8f0;
+        }
+        .restart-btn {
+            padding: 14px 36px;
+            font-size: 20px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #2ed573, #26af5f);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(46, 213, 115, 0.4);
+            transition: transform 0.1s ease;
+        }
+        .restart-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="powers-ui">
+        <div class="btn-power" id="btn-freeze" onclick="useFreeze()">❄️</div>
+        <div class="btn-power" id="btn-bigball" onclick="useBigBall()">🔥</div>
+    </div>
+
+    <div class="ui-controls">
+        <div class="btn-group">
+            <div class="btn" id="btn-left">◄</div>
+            <div class="btn" id="btn-right">►</div>
+        </div>
+        <div class="btn-group">
+            <div class="btn" id="btn-jump">▲</div>
+            <div class="btn btn-kick" id="btn-kick">⚽</div>
+        </div>
+    </div>
+
+    <div id="game-over-modal">
+        <h1 id="result-title">ПОБЕДА!</h1>
+        <p id="result-score">Счет: 3 - 1</p>
+        <button class="restart-btn" onclick="restartMatch()">СЫГРАТЬ СНОВА</button>
+    </div>
+</div>
+
+<script>
+// --- TELEGRAM WEBAPP СЧИТЫВАНИЕ ДАННЫХ ---
+const tg = window.Telegram?.WebApp;
+let telegramUser = { id: 0, first_name: 'Игрок 1' };
+
+if (tg) {
+    tg.ready();
+    tg.expand();
+    if (tg.isVersionAtLeast && tg.isVersionAtLeast('7.7')) {
+        tg.disableVerticalSwipes();
+    }
+    if (tg.initDataUnsafe?.user) {
+        telegramUser = tg.initDataUnsafe.user;
+    }
+}
+
+// --- WEB AUDIO СИНТЕЗАТОР ---
+let audioCtx = null;
+
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+}
+
+const soundFx = {
+    kick: () => {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(160, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+    },
+    whistle: () => {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(2300, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(2550, audioCtx.currentTime + 0.08);
+        osc.frequency.setValueAtTime(2350, audioCtx.currentTime + 0.16);
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+    },
+    goal: () => {
+        if (!audioCtx) return;
+        const notes = [261.63, 329.63, 392.00, 523.25];
+        notes.forEach((freq, idx) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime + idx * 0.08);
+            gain.gain.setValueAtTime(0.18, audioCtx.currentTime + idx * 0.08);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + idx * 0.08 + 0.25);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(audioCtx.currentTime + idx * 0.08);
+            osc.stop(audioCtx.currentTime + idx * 0.08 + 0.25);
+        });
+    },
+    freeze: () => {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(700, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(2400, audioCtx.currentTime + 0.25);
+        gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+    },
+    bigBall: () => {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(90, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(320, audioCtx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.35);
+    },
+    crossbar: () => {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1400, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(450, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+    }
+};
+
+const inputState = { left: false, right: false, jump: false, kick: false };
+
+function triggerHaptic(type = 'light') {
+    if (tg?.HapticFeedback) {
+        tg.HapticFeedback.impactOccurred(type);
+    }
+}
+
+function bindButton(id, stateKey, hapticType = 'light') {
+    const el = document.getElementById(id);
+    const start = (e) => {
+        e.preventDefault();
+        initAudio();
+        inputState[stateKey] = true;
+        triggerHaptic(hapticType);
+    };
+    const end = (e) => {
+        e.preventDefault();
+        inputState[stateKey] = false;
+    };
+
+    el.addEventListener('touchstart', start, { passive: false });
+    el.addEventListener('touchend', end, { passive: false });
+    el.addEventListener('mousedown', start);
+    el.addEventListener('mouseup', end);
+}
+
+bindButton('btn-left', 'left');
+bindButton('btn-right', 'right');
+bindButton('btn-jump', 'jump');
+bindButton('btn-kick', 'kick', 'medium');
+
+const catDefault = 0x0001;
+const catPlayer  = 0x0002;
+const catBall    = 0x0004;
+const catGoal    = 0x0008;
+
+const GOAL_CROSSBAR_Y = 260;
+
+const config = {
+    type: Phaser.AUTO,
+    width: 800,
+    height: 450,
+    parent: 'game-container',
+    scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+    },
+    physics: {
+        default: 'matter',
+        matter: {
+            gravity: { y: 0.85 },
+            debug: false
+        }
+    },
+    scene: {
+        preload: preload,
+        create: create,
+        update: update
+    }
+};
+
+let player, aiPlayer, ball;
+let playerVisual, aiVisual, playerBoot, aiBoot, iceOverlay;
+let playerPupils = [], aiPupils = [];
+let scoreText, timerText, centerAnnounceText;
+let cursors, spaceKey;
+let currentScene;
+let score = { left: 0, right: 0 };
+let matchTime = 60;
+let timerEvent;
+let gameState = 'countdown';
+
+let powersUsed = { freeze: false, bigBall: false };
+let isAiFrozen = false;
+let isBallBig = false;
+
+function preload() {
+    generateProceduralTextures(this);
+}
+
+function generateProceduralTextures(scene) {
+    const ballCanvas = scene.textures.createCanvas('ballTex', 44, 44);
+    const ctxB = ballCanvas.context;
+    ctxB.beginPath(); ctxB.arc(22, 22, 20, 0, Math.PI * 2);
+    ctxB.fillStyle = '#ffffff'; ctxB.fill();
+    ctxB.lineWidth = 2; ctxB.strokeStyle = '#1e293b'; ctxB.stroke();
+    ctxB.fillStyle = '#1e293b';
+    ctxB.beginPath();
+    for (let i = 0; i < 5; i++) {
+        let a = (i * 72 - 18) * Math.PI / 180;
+        let x = 22 + 7 * Math.cos(a), y = 22 + 7 * Math.sin(a);
+        if (i === 0) ctxB.moveTo(x, y); else ctxB.lineTo(x, y);
+    }
+    ctxB.closePath(); ctxB.fill();
+    ballCanvas.refresh();
+
+    const bootCanvas = scene.textures.createCanvas('bootTex', 36, 20);
+    const ctxBt = bootCanvas.context;
+    ctxBt.fillStyle = '#f1c40f';
+    ctxBt.beginPath(); ctxBt.roundRect(4, 4, 28, 12, 6); ctxBt.fill();
+    ctxBt.fillStyle = '#ffffff'; ctxBt.fillRect(2, 14, 30, 4);
+    bootCanvas.refresh();
+}
+
+function create() {
+    currentScene = this;
+    const scene = this;
+    const world = this.matter.world;
+
+    world.setBounds(0, 0, 800, 450, 32, true, true, true, true);
+    this.input.on('pointerdown', () => {
+        initAudio();
+        window.focus();
+    });
+
+    this.input.keyboard.addCapture([
+        Phaser.Input.Keyboard.KeyCodes.UP, Phaser.Input.Keyboard.KeyCodes.DOWN,
+        Phaser.Input.Keyboard.KeyCodes.LEFT, Phaser.Input.Keyboard.KeyCodes.RIGHT,
+        Phaser.Input.Keyboard.KeyCodes.SPACE
+    ]);
+
+    cursors = this.input.keyboard.createCursorKeys();
+    spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+    const bgGfx = this.add.graphics();
+    bgGfx.fillGradientStyle(0x0f172a, 0x0f172a, 0x1e293b, 0x1e293b, 1);
+    bgGfx.fillRect(0, 0, 800, 420);
+    bgGfx.fillStyle(0xffffff, 0.15);
+    bgGfx.fillTriangle(60, 0, 0, 300, 200, 300);
+    bgGfx.fillTriangle(740, 0, 600, 300, 800, 300);
+
+    for (let i = 0; i < 800; i += 80) {
+        let col = (i / 80) % 2 === 0 ? 0x2ed573 : 0x26af5f;
+        this.add.rectangle(i + 40, 430, 80, 40, col);
+    }
+
+    const fieldLines = this.add.graphics();
+    fieldLines.lineStyle(3, 0xffffff, 0.5);
+    fieldLines.lineBetween(400, 280, 400, 420);
+    fieldLines.strokeCircle(400, 350, 50);
+
+    const groundGfx = this.add.rectangle(400, 435, 800, 30, 0x1e293b, 0);
+    const ground = this.matter.add.gameObject(groundGfx, { isStatic: true, label: 'ground' });
+    ground.setCollisionCategory(catDefault);
+
+    function build2DGoal(isLeft) {
+        const goalWidth = 90;
+        const crossbarY = GOAL_CROSSBAR_Y;
+        const color = isLeft ? 0x3742fa : 0xff4757;
+
+        const gfx = scene.add.graphics();
+        const startX = isLeft ? 0 : 800 - goalWidth;
+        const endX = isLeft ? goalWidth : 800;
+        const tipX = isLeft ? goalWidth : 800 - goalWidth;
+
+        gfx.lineStyle(1, 0xffffff, 0.25);
+        for (let x = startX; x <= endX; x += 10) gfx.lineBetween(x, crossbarY, x, 420);
+        for (let y = crossbarY; y <= 420; y += 12) gfx.lineBetween(startX, y, endX, y);
+
+        gfx.lineStyle(5, color, 1);
+        gfx.strokeRect(startX, crossbarY, goalWidth, 420 - crossbarY);
+        gfx.lineStyle(6, 0xffffff, 1);
+        gfx.lineBetween(startX, crossbarY, tipX, crossbarY);
+        gfx.lineBetween(tipX, crossbarY, tipX, 420);
+
+        const barCenterX = isLeft ? goalWidth / 2 : 800 - (goalWidth / 2);
+        const mainBar = scene.matter.add.rectangle(barCenterX, crossbarY, goalWidth, 10, {
+            isStatic: true, friction: 0, restitution: 0.5, label: 'crossbar'
+        });
+        mainBar.collisionFilter = { category: catGoal, mask: catBall | catPlayer };
+
+        const roofWedge = scene.matter.add.rectangle(barCenterX, crossbarY - 8, goalWidth, 12, {
+            isStatic: true, angle: isLeft ? 0.35 : -0.35, friction: 0, restitution: 0.5, label: 'crossbar'
+        });
+        roofWedge.collisionFilter = { category: catGoal, mask: catBall | catPlayer };
+
+        const tipCircle = scene.matter.add.circle(tipX, crossbarY, 6, {
+            isStatic: true, friction: 0, restitution: 0.5, label: 'crossbar'
+        });
+        tipCircle.collisionFilter = { category: catGoal, mask: catBall | catPlayer };
+
+        const sensorCenterX = isLeft ? (goalWidth / 2) - 10 : 800 - (goalWidth / 2) + 10;
+        const goalSensor = scene.add.rectangle(sensorCenterX, crossbarY + 80, goalWidth - 15, 140);
+        const sensorBody = scene.matter.add.gameObject(goalSensor, {
+            isStatic: true, isSensor: true, label: isLeft ? 'leftGoal' : 'rightGoal'
+        });
+        sensorBody.setCollisionCategory(catGoal);
+        sensorBody.setCollidesWith([catBall]);
+    }
+
+    build2DGoal(true);
+    build2DGoal(false);
+
+    const playerGfx = this.add.circle(0, 0, 35, 0x2ed573);
+    player = this.matter.add.gameObject(playerGfx, {
+        shape: { type: 'circle', radius: 35 }, restitution: 0.2, friction: 0.1, label: 'player'
+    });
+    player.setFixedRotation();
+    player.setCollisionCategory(catPlayer);
+
+    playerVisual = this.add.container(200, 300);
+    const pHead = this.add.circle(0, 0, 35, 0x2ed573);
+    pHead.setStrokeStyle(3, 0xffffff);
+    const pEyeL = this.add.circle(12, -8, 8, 0xffffff);
+    const pPupilL = this.add.circle(14, -8, 3, 0x000000);
+    const pSmile = this.add.graphics();
+    pSmile.lineStyle(3, 0xffffff); pSmile.beginPath(); pSmile.arc(10, 8, 10, 0, Math.PI, false); pSmile.strokePath();
+    playerVisual.add([pHead, pEyeL, pPupilL, pSmile]);
+    playerPupils.push(pPupilL);
+
+    playerBoot = this.add.image(215, 330, 'bootTex').setOrigin(0.2, 0.5);
+
+    const aiGfx = this.add.circle(0, 0, 35, 0xff4757);
+    aiPlayer = this.matter.add.gameObject(aiGfx, {
+        shape: { type: 'circle', radius: 35 }, restitution: 0.2, friction: 0.1, label: 'aiPlayer'
+    });
+    aiPlayer.setFixedRotation();
+    aiPlayer.setCollisionCategory(catPlayer);
+
+    aiVisual = this.add.container(600, 300);
+    const aiHead = this.add.circle(0, 0, 35, 0xff4757);
+    aiHead.setStrokeStyle(3, 0xffffff);
+    const aiEyeL = this.add.circle(-12, -8, 8, 0xffffff);
+    const aiPupilL = this.add.circle(-14, -8, 3, 0x000000);
+    const aiBrow = this.add.graphics();
+    aiBrow.lineStyle(3, 0x000000); aiBrow.lineBetween(-20, -18, -5, -12);
+    
+    iceOverlay = this.add.circle(0, 0, 42, 0x74b9ff, 0.65);
+    iceOverlay.setStrokeStyle(4, 0x0984e3);
+    iceOverlay.setVisible(false);
+
+    aiVisual.add([aiHead, aiEyeL, aiPupilL, aiBrow, iceOverlay]);
+    aiPupils.push(aiPupilL);
+
+    aiBoot = this.add.image(585, 330, 'bootTex').setOrigin(0.8, 0.5);
+    aiBoot.setFlipX(true);
+
+    ball = this.matter.add.image(400, 150, 'ballTex', null, {
+        shape: { type: 'circle', radius: 22 },
+        restitution: 0.8, frictionAir: 0.005, density: 0.003, label: 'ball'
+    });
+    ball.setCollisionCategory(catBall);
+    ball.setCollidesWith([catDefault, catPlayer, catGoal]);
+
+    scoreText = this.add.text(400, 35, '0 : 0', { fontSize: '38px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
+    timerText = this.add.text(400, 75, '60', { fontSize: '22px', color: '#f1c40f', fontStyle: 'bold' }).setOrigin(0.5);
+    centerAnnounceText = this.add.text(400, 200, '', { fontSize: '54px', color: '#f1c40f', fontStyle: 'bold' }).setOrigin(0.5);
+
+    world.on('collisionstart', (event) => {
+        event.pairs.forEach(pair => {
+            const { bodyA, bodyB } = pair;
+            const labels = [bodyA.label, bodyB.label];
+
+            if (labels.includes('ball') && labels.includes('crossbar')) {
+                soundFx.crossbar();
+                triggerHaptic('light');
+            }
+
+            if (gameState === 'playing') {
+                if (labels.includes('ball') && labels.includes('rightGoal')) {
+                    score.left++;
+                    soundFx.goal();
+                    triggerHaptic('heavy');
+                    resetPositions();
+                } else if (labels.includes('ball') && labels.includes('leftGoal')) {
+                    score.right++;
+                    soundFx.goal();
+                    triggerHaptic('heavy');
+                    resetPositions();
+                }
+            }
+        });
+    });
+
+    resetPositions();
+    startMatchCountdown();
+}
+
+window.useFreeze = function() {
+    initAudio();
+    if (powersUsed.freeze || gameState !== 'playing') return;
+    powersUsed.freeze = true;
+    document.getElementById('btn-freeze').classList.add('used');
+
+    isAiFrozen = true;
+    iceOverlay.setVisible(true);
+    soundFx.freeze();
+    triggerHaptic('heavy');
+
+    currentScene.time.delayedCall(3500, () => {
+        isAiFrozen = false;
+        iceOverlay.setVisible(false);
+    });
+};
+
+window.useBigBall = function() {
+    initAudio();
+    if (powersUsed.bigBall || gameState !== 'playing') return;
+    powersUsed.bigBall = true;
+    document.getElementById('btn-bigball').classList.add('used');
+
+    isBallBig = true;
+    ball.setScale(2.0);
+    currentScene.matter.body.scale(ball.body, 2.0, 2.0);
+    soundFx.bigBall();
+    triggerHaptic('heavy');
+
+    currentScene.time.delayedCall(5000, () => {
+        if (ball && ball.body) {
+            ball.setScale(1.0);
+            currentScene.matter.body.scale(ball.body, 0.5, 0.5);
+        }
+        isBallBig = false;
+    });
+};
+
+function startMatchCountdown() {
+    gameState = 'countdown';
+    let count = 3;
+    centerAnnounceText.setText(count);
+
+    const countdownTimer = currentScene.time.addEvent({
+        delay: 1000,
+        repeat: 3,
+        callback: () => {
+            count--;
+            if (count > 0) {
+                centerAnnounceText.setText(count);
+            } else if (count === 0) {
+                centerAnnounceText.setText('ПОЕХАЛИ!');
+                soundFx.whistle();
+            } else {
+                centerAnnounceText.setText('');
+                gameState = 'playing';
+                startMatchTimer();
+            }
+        }
+    });
+}
+
+function startMatchTimer() {
+    if (timerEvent) timerEvent.destroy();
+    timerEvent = currentScene.time.addEvent({
+        delay: 1000,
+        repeat: matchTime - 1,
+        callback: () => {
+            matchTime--;
+            timerText.setText(matchTime);
+            if (matchTime <= 0) {
+                endMatch();
+            }
+        }
+    });
+}
+
+function endMatch() {
+    gameState = 'gameover';
+    ball.setVelocity(0, 0);
+    soundFx.whistle();
+
+    const modal = document.getElementById('game-over-modal');
+    const title = document.getElementById('result-title');
+    const scoreEl = document.getElementById('result-score');
+
+    scoreEl.innerText = `Счет: ${score.left} - ${score.right}`;
+
+    let resultStatus = 'draw';
+    if (score.left > score.right) {
+        title.innerText = 'ПОБЕДА!';
+        title.style.color = '#2ed573';
+        resultStatus = 'win';
+    } else if (score.left < score.right) {
+        title.innerText = 'ПОРАЖЕНИЕ';
+        title.style.color = '#ff4757';
+        resultStatus = 'lose';
+    } else {
+        title.innerText = 'НИЧЬЯ';
+        title.style.color = '#f1c40f';
+    }
+
+    modal.style.display = 'flex';
+
+    // Формирование пакета данных для отправки в Telegram Bot
+    const matchData = {
+        user_id: telegramUser.id,
+        player_name: telegramUser.first_name,
+        player_score: score.left,
+        ai_score: score.right,
+        result: resultStatus
+    };
+
+    if (tg && tg.sendData) {
+        setTimeout(() => {
+            tg.sendData(JSON.stringify(matchData));
+        }, 1500);
+    }
+}
+
+window.restartMatch = function() {
+    initAudio();
+    document.getElementById('game-over-modal').style.display = 'none';
+    score = { left: 0, right: 0 };
+    matchTime = 60;
+    scoreText.setText('0 : 0');
+    timerText.setText('60');
+
+    powersUsed = { freeze: false, bigBall: false };
+    document.getElementById('btn-freeze').classList.remove('used');
+    document.getElementById('btn-bigball').classList.remove('used');
+    isAiFrozen = false;
+    iceOverlay.setVisible(false);
+
+    if (isBallBig) {
+        ball.setScale(1.0);
+        currentScene.matter.body.scale(ball.body, 0.5, 0.5);
+        isBallBig = false;
+    }
+
+    resetPositions();
+    startMatchCountdown();
+};
+
+function resetPositions() {
+    scoreText.setText(`${score.left} : ${score.right}`);
+    player.setPosition(200, 350);
+    player.setVelocity(0, 0);
+
+    aiPlayer.setPosition(600, 350);
+    aiPlayer.setVelocity(0, 0);
+
+    ball.setPosition(400, 120);
+    ball.setVelocity(0, 0);
+}
+
+function update() {
+    playerVisual.setPosition(player.x, player.y);
+    playerBoot.setPosition(player.x + 15, player.y + 25);
+
+    aiVisual.setPosition(aiPlayer.x, aiPlayer.y);
+    aiBoot.setPosition(aiPlayer.x - 15, aiPlayer.y + 25);
+
+    updateEyeTracking();
+
+    if (gameState !== 'playing') return;
+
+    const speed = 5.0;
+    const moveLeft = cursors.left.isDown || inputState.left;
+    const moveRight = cursors.right.isDown || inputState.right;
+    const isJumping = Phaser.Input.Keyboard.JustDown(cursors.up) || inputState.jump;
+    const isKicking = Phaser.Input.Keyboard.JustDown(spaceKey) || inputState.kick;
+
+    if (moveLeft) player.setVelocityX(-speed);
+    else if (moveRight) player.setVelocityX(speed);
+
+    if (isJumping && player.y > 360) {
+        player.setVelocityY(-10.5);
+        inputState.jump = false;
+    }
+
+    if (player.y < GOAL_CROSSBAR_Y + 5) player.setCollidesWith([catDefault, catBall]);
+    else player.setCollidesWith([catDefault, catBall, catGoal]);
+
+    if (aiPlayer.y < GOAL_CROSSBAR_Y + 5) aiPlayer.setCollidesWith([catDefault, catBall]);
+    else aiPlayer.setCollidesWith([catDefault, catBall, catGoal]);
+
+    if (isKicking) {
+        animateKick(playerBoot, -45);
+
+        if (Phaser.Math.Distance.Between(player.x, player.y, ball.x, ball.y) < 125) {
+            const speedBonus = player.body.velocity.x > 1 ? 1.25 : 1.0;
+
+            let vx = 16.5 * speedBonus;
+            let vy = -4.8;
+
+            if (cursors.down.isDown) { vx = 20 * speedBonus; vy = -1.5; }
+            else if (cursors.up.isDown) { vx = 11 * speedBonus; vy = -12; }
+
+            ball.setVelocity(vx, vy);
+            soundFx.kick();
+            triggerHaptic('medium');
+        }
+        inputState.kick = false;
+    }
+
+    if (!isAiFrozen) {
+        updateAIBot();
+    } else {
+        aiPlayer.setVelocity(0, 0);
+    }
+}
+
+function updateEyeTracking() {
+    const angleP = Phaser.Math.Angle.Between(player.x, player.y, ball.x, ball.y);
+    playerPupils.forEach(p => {
+        p.x = 12 + Math.cos(angleP) * 3;
+        p.y = -8 + Math.sin(angleP) * 3;
+    });
+
+    const angleAI = Phaser.Math.Angle.Between(aiPlayer.x, aiPlayer.y, ball.x, ball.y);
+    aiPupils.forEach(p => {
+        p.x = -12 + Math.cos(angleAI) * 3;
+        p.y = -8 + Math.sin(angleAI) * 3;
+    });
+}
+
+function animateKick(boot, angle) {
+    currentScene.tweens.add({
+        targets: boot,
+        angle: angle,
+        duration: 90,
+        yoyo: true,
+        ease: 'Power1'
+    });
+}
+
+function updateAIBot() {
+    const aiSpeed = 2.7;
+    const homeX = 650;
+
+    if (ball.x > 450) { 
+        if (ball.x < aiPlayer.x - 20) aiPlayer.setVelocityX(-aiSpeed);
+        else if (ball.x > aiPlayer.x + 20) aiPlayer.setVelocityX(aiSpeed);
+    } else {
+        if (aiPlayer.x < homeX - 10) aiPlayer.setVelocityX(aiSpeed);
+        else if (aiPlayer.x > homeX + 10) aiPlayer.setVelocityX(-aiSpeed);
+    }
+
+    const distToBall = Phaser.Math.Distance.Between(aiPlayer.x, aiPlayer.y, ball.x, ball.y);
+
+    if (distToBall < 95 && ball.y < aiPlayer.y && aiPlayer.y > 360) {
+        if (Math.random() < 0.25) {
+            aiPlayer.setVelocityY(-10.0);
+        }
+    }
+
+    if (distToBall < 85 && Math.random() < 0.035) {
+        animateKick(aiBoot, 45);
+
+        const jitterX = 1 + (Math.random() * 0.2 - 0.1);
+        const jitterY = 1 + (Math.random() * 0.2 - 0.1);
+
+        let vx = -11 * jitterX;
+        let vy = -5.5 * jitterY;
+
+        const randKick = Math.random();
+        if (randKick < 0.2) { vx = -13 * jitterX; vy = -2 * jitterY; }
+        else if (randKick > 0.8) { vx = -8 * jitterX; vy = -11 * jitterY; }
+
+        ball.setVelocity(vx, vy);
+        soundFx.kick();
+        triggerHaptic('light');
+    }
+}
+
+const game = new Phaser.Game(config);
+</script>
+</body>
+</html>
