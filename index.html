@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Head Ball Telegram</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: #090c10;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            height: 100vh;
+            max-height: 450px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+
+        /* Компактное верхнее табло */
+        .top-hud {
+            position: absolute;
+            top: 8px;
+            left: 0; right: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 15px;
+            z-index: 20;
+            pointer-events: none;
+        }
+        .scoreboard-compact {
+            background: rgba(15, 23, 42, 0.85);
+            border: 2px solid #f1c40f;
+            border-radius: 20px;
+            padding: 4px 16px;
+            color: #fff;
+            font-weight: bold;
+            font-size: 18px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        .timer-badge { color: #f39c12; font-size: 14px; }
+        .coins-badge {
+            background: rgba(0,0,0,0.6);
+            border: 1px solid #f1c40f;
+            border-radius: 15px;
+            padding: 4px 10px;
+            font-size: 13px;
+            color: #f1c40f;
+            font-weight: bold;
+            pointer-events: auto;
+        }
+        .btn-shop-open {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            border: none;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-weight: bold;
+            font-size: 13px;
+            cursor: pointer;
+            pointer-events: auto;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+
+        /* Кнопки суперспособностей */
+        .powers-ui {
+            position: absolute;
+            top: 50px;
+            left: 15px;
+            display: flex;
+            gap: 8px;
+            z-index: 10;
+        }
+        .btn-power {
+            width: 42px;
+            height: 42px;
+            background: rgba(0, 168, 255, 0.4);
+            border: 2px solid #00a8ff;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            transition: all 0.2s ease;
+        }
+        .btn-power:active { transform: scale(0.92); }
+        .btn-power.used {
+            opacity: 0.3;
+            filter: grayscale(1);
+            pointer-events: none;
+            border-color: #888;
+        }
+        #btn-bigball { background: rgba(255, 127, 80, 0.4); border-color: #ff7f50; }
+
+        /* Кнопки управления */
+        .ui-controls {
+            position: absolute;
+            bottom: 12px;
+            left: 0; right: 0;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 15px;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .btn-group { display: flex; gap: 10px; pointer-events: auto; }
+        .btn {
+            width: 52px;
+            height: 52px;
+            background: rgba(255, 255, 255, 0.25);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            color: #fff;
+            font-size: 22px;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(6px);
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .btn:active { transform: scale(0.92); background: rgba(255, 255, 255, 0.45); }
+        .btn-kick { background: rgba(255, 71, 87, 0.5); border-color: #ff4757; }
+
+        /* Модальные окна */
+        .modal-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(5, 10, 20, 0.92);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: white;
+            backdrop-filter: blur(8px);
+            padding: 20px;
+        }
+        .modal-overlay h1 { font-size: 38px; margin-bottom: 10px; }
+        .modal-overlay p { font-size: 22px; margin-bottom: 20px; color: #e2e8f0; }
+        .btn-main {
+            padding: 12px 32px;
+            font-size: 18px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #2ed573, #26af5f);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(46, 213, 115, 0.4);
+        }
+
+        /* Магазин Бутс */
+        .shop-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap:
