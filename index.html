@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Head Ball Telegram</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #1e272e;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      color: white;
+      overflow: hidden;
+    }
+    #game-container {
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      aspect-ratio: 16 / 9;
+      background: linear-gradient(to bottom, #87CEEB 0%, #E0F6FF 70%, #4CAF50 70%, #388E3C 100%);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    canvas { width: 100%; height: 100%; display: block; }
+    
+    /* Табло счета */
+    #scoreboard {
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.65);
+      padding: 8px 24px;
+      border-radius: 30px;
+      font-size: 22px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      border: 2px solid #f1c40f;
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      z-index: 10;
+    }
+    #timer { font-size: 16px; color: #f39c12; }
+
+    /* Сенсорное управление для смартфонов */
+    #controls {
+      position: absolute;
+      bottom: 10px;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 10;
+    }
+    .btn-group { display: flex; gap: 10px; }
+    .btn {
+      width: 55px;
+      height: 55px;
+      background: rgba(255,255,255,0.25);
+      border: 2px solid white;
+      border-radius: 50%;
+      color: white;
+      font-size: 22px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: manipulation;
+    }
+    .btn:active { background: rgba(255,255,255,0.6); transform: scale(0.95); }
+    .btn-kick { background: rgba(231, 76, 60, 0.7); width: 65px; height: 65px; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<div id="game-container">
+  <div id="scoreboard">
+    <span id="player-score" style="color: #3498db;">0</span>
+    <span>:</span>
+    <span id="ai-score" style="color: #e74c3c;">0</span>
+    <span id="timer">⏱️ 45</span>
+  </div>
+
+  <canvas id="canvas" width="800" height="450"></canvas>
+
+  <div id="controls">
+    <div class="btn-group">
+      <div class="btn" id="btn-left">◀</div>
+      <div class="btn" id="btn-right">▶</div>
+    </div>
+    <div class="btn-group">
+      <div class="btn" id="btn-jump">▲</div>
+      <div class="btn btn-kick" id="btn-kick">УДАР</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const tg = window.Telegram?.WebApp;
+  if (tg) tg.expand();
+
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  // Параметры мира
+  const GRAVITY = 0.45;
+  const GROUND_Y = 360;
+  let timeLeft = 45;
+  let gameOver = false;
+
+  // Игрок
+  const player = {
+    x: 150, y: GROUND_Y - 50,
+    vx: 0, vy: 0,
+    radius: 35,
+    score: 0,
+    kickAngle: 0,
+    isKicking: false,
+    color: '#3498db',
+    bootColor: '#f1c40f'
+  };
+
+  // Бот
+  const ai = {
+    x: 650, y: GROUND_Y - 50,
+    vx: 0, vy: 0,
+    radius: 35,
+    score: 0,
+    kickAngle: 0,
+    isKicking: false,
+    color: '#e74c3c',
+    bootColor: '#2ecc71'
+  };
+
+  // Мяч
+  const ball = {
+    x: 400, y: 150,
+    vx: 0, vy: 0,
+    radius: 16,
+    rotation: 0
+  };
+
+  // Ворота
+  const goalWidth = 70;
+  const goalHeight = 160;
+
+  // Клавиши
+  const keys = {};
+  window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (e.code === 'KeyK' || e.code === 'Space') kickBoot(player);
+  });
+  window.addEventListener('keyup', e => keys[e.code] = false);
+
+  // Сенсорные кнопки
+  setupTouchButton('btn-left', () => keys['ArrowLeft'] = true, () => keys['ArrowLeft'] = false);
+  setupTouchButton('btn-right', () => keys['ArrowRight'] = true, () => keys['ArrowRight'] = false);
+  setupTouchButton('btn-jump', () => keys['ArrowUp'] = true, () => keys['ArrowUp'] = false);
+  setupTouchButton('btn-kick', () => kickBoot(player), null);
+
+  function setupTouchButton(id, onPress, onRelease) {
+    const el = document.getElementById(id);
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); onPress(); });
+    el.addEventListener('touchend', (e) => { e.preventDefault(); if (onRelease) onRelease(); });
+  }
+
+  function kickBoot(char) {
+    if (!char.isKicking) {
+      char.isKicking = true;
+      let angle = 0;
+      const interval = setInterval(() => {
+        angle += 0.25;
+        char.kickAngle = Math.sin(angle) * 1.2;
+        if (angle >= Math.PI) {
+          clearInterval(interval);
+          char.kickAngle = 0;
+          char.isKicking = false;
+        }
+      }, 20);
+    }
+  }
+
+  // Таймер матча
+  const timerInterval = setInterval(() => {
+    if (gameOver) return;
+    timeLeft--;
+    document.getElementById('timer').innerText = `⏱️ ${timeLeft}`;
+    if (timeLeft <= 0) finishGame();
+  }, 1000);
+
+  function update() {
+    if (gameOver) return;
+
+    // Движение игрока
+    if (keys['ArrowLeft'] || keys['KeyA']) player.vx = -5;
+    else if (keys['ArrowRight'] || keys['KeyD']) player.vx = 5;
+    else player.vx = 0;
+
+    if ((keys['ArrowUp'] || keys['KeyW']) && player.y >= GROUND_Y - player.radius) {
+      player.vy = -11;
+    }
+
+    // Физика игрока
+    player.x += player.vx;
+    player.vy += GRAVITY;
+    player.y += player.vy;
+    if (player.y > GROUND_Y - player.radius) {
+      player.y = GROUND_Y - player.radius;
+      player.vy = 0;
+    }
+    player.x = Math.max(goalWidth + player.radius, Math.min(canvas.width - goalWidth - player.radius, player.x));
+
+    // ИИ Бота
+    const targetX = ball.x + 20;
+    if (ai.x < targetX - 10) ai.vx = 3.5;
+    else if (ai.x > targetX + 10) ai.vx = -3.5;
+    else ai.vx = 0;
+
+    if (ball.x > 400 && ball.y < GROUND_Y - 80 && Math.abs(ai.x - ball.x) < 60 && ai.y >= GROUND_Y - ai.radius) {
+      ai.vy = -10;
+    }
+    if (Math.abs(ai.x - ball.x) < 50 && Math.abs(ai.y - ball.y) < 40) {
+      kickBoot(ai);
+    }
+
+    ai.x += ai.vx;
+    ai.vy += GRAVITY;
+    ai.y += ai.vy;
+    if (ai.y > GROUND_Y - ai.radius) {
+      ai.y = GROUND_Y - ai.radius;
+      ai.vy = 0;
+    }
+    ai.x = Math.max(goalWidth + ai.radius, Math.min(canvas.width - goalWidth - ai.radius, ai.x));
+
+    // Физика мяча
+    ball.vy += GRAVITY * 0.7;
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+    ball.vx *= 0.99;
+    ball.rotation += ball.vx * 0.05;
+
+    // Отскоки мяча от земли и стен
+    if (ball.y > GROUND_Y - ball.radius) {
+      ball.y = GROUND_Y - ball.radius;
+      ball.vy = -ball.vy * 0.65;
+    }
+    if (ball.x < ball.radius) { ball.x = ball.radius; ball.vx = -ball.vx * 0.7; }
+    if (ball.x > canvas.width - ball.radius) { ball.x = canvas.width - ball.radius; ball.vx = -ball.vx * 0.7; }
+
+    // Столкновения персонажей с мячом
+    checkCharBallCollision(player, 1);
+    checkCharBallCollision(ai, -1);
+
+    // Голы
+    if (ball.y > GROUND_Y - goalHeight + 20) {
+      if (ball.x < goalWidth) {
+        ai.score++;
+        resetBall();
+      } else if (ball.x > canvas.width - goalWidth) {
+        player.score++;
+        resetBall();
+      }
+    }
+
+    document.getElementById('player-score').innerText = player.score;
+    document.getElementById('ai-score').innerText = ai.score;
+  }
+
+  function checkCharBallCollision(char, dir) {
+    const dx = ball.x - char.x;
+    const dy = ball.y - char.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < char.radius + ball.radius) {
+      const angle = Math.atan2(dy, dx);
+      const force = 9;
+      ball.vx = Math.cos(angle) * force + char.vx * 0.5;
+      ball.vy = Math.sin(angle) * force;
+
+      // Доп. импульс при ударе бутсой
+      if (char.isKicking) {
+        ball.vx += dir * 6;
+        ball.vy -= 4;
+      }
+    }
+  }
+
+  function resetBall() {
+    ball.x = 400;
+    ball.y = 120;
+    ball.vx = (Math.random() - 0.5) * 4;
+    ball.vy = 0;
+  }
+
+  // --- ОТРИСОВКА (DRAW) ---
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Ворота
+    drawGoal(0, true);
+    drawGoal(canvas.width - goalWidth, false);
+
+    // Тень под персонажами
+    drawShadow(player.x, GROUND_Y, player.radius);
+    drawShadow(ai.x, GROUND_Y, ai.radius);
+    drawShadow(ball.x, GROUND_Y, ball.radius * 0.8);
+
+    // Персонажи
+    drawCharacter(player, true);
+    drawCharacter(ai, false);
+
+    // Мяч
+    drawBall();
+  }
+
+  function drawShadow(x, y, radius) {
+    ctx.beginPath();
+    ctx.ellipse(x, y + 5, radius, radius * 0.3, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fill();
+  }
+
+  function drawCharacter(char, isPlayer) {
+    ctx.save();
+    ctx.translate(char.x, char.y);
+
+    // 1. Туловище (майка)
+    ctx.beginPath();
+    ctx.ellipse(0, 20, 18, 14, 0, 0, Math.PI * 2);
+    ctx.fillStyle = char.color;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#2c3e50';
+    ctx.stroke();
+
+    // 2. Голова
+    ctx.beginPath();
+    ctx.arc(0, -10, char.radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffdbac';
+    ctx.fill();
+    ctx.stroke();
+
+    // 3. Глаз и рот
+    const faceDir = isPlayer ? 1 : -1;
+    ctx.beginPath();
+    ctx.arc(12 * faceDir, -15, 6, 0, Math.PI * 2);
+    ctx.fillStyle = 'white';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(14 * faceDir, -15, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'black';
+    ctx.fill();
+
+    // Улыбка
+    ctx.beginPath();
+    ctx.arc(10 * faceDir, -2, 6, 0, Math.PI * 0.8);
+    ctx.strokeStyle = '#c0392b';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 4. Бутса (Нога) с анимацией удара
+    ctx.save();
+    const bootOffsetX = 15 * faceDir;
+    const bootOffsetY = 25;
+    ctx.translate(bootOffsetX, bootOffsetY);
+    ctx.rotate((isPlayer ? char.kickAngle : -char.kickAngle));
+
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 14, 8, 0, 0, Math.PI * 2);
+    ctx.fillStyle = char.bootColor;
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.restore();
+    ctx.restore();
+  }
+
+  function drawBall() {
+    ctx.save();
+    ctx.translate(ball.x, ball.y);
+    ctx.rotate(ball.rotation);
+
+    ctx.beginPath();
+    ctx.arc(0, 0, ball.radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#000';
+    ctx.stroke();
+
+    // Узор футбольного мяча
+    ctx.beginPath();
+    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#000000';
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawGoal(x, isLeft) {
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillRect(x, GROUND_Y - goalHeight, goalWidth, goalHeight);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(x, GROUND_Y - goalHeight, goalWidth, goalHeight);
+  }
+
+  function finishGame() {
+    gameOver = true;
+    let result = 'draw';
+    if (player.score > ai.score) result = 'win';
+    else if (player.score < ai.score) result = 'lose';
+
+    if (tg && tg.sendData) {
+      tg.sendData(JSON.stringify({
+        player_score: player.score,
+        ai_score: ai.score,
+        result: result
+      }));
+    } else {
+      alert(`Матч окончен! Счёт: ${player.score}:${ai.score}`);
+    }
+  }
+
+  function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+  }
+
+  requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
