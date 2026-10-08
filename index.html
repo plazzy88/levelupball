@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Head Ball Telegram</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: #090c10;
+            overflow: hidden;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            max-width: 960px;
+            height: 100vh;
+            max-height: 450px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 35px rgba(0,0,0,0.9);
+            background: #111;
+        }
+
+        /* Верхняя панель и табло в стиле Head Ball 2 */
+        .top-hud {
+            position: absolute;
+            top: 10px;
+            left: 0; right: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 15px;
+            z-index: 20;
+            pointer-events: none;
+        }
+        .coins-badge {
+            background: rgba(0,0,0,0.75);
+            border: 2px solid #f1c40f;
+            border-radius: 20px;
+            padding: 6px 14px;
+            font-size: 15px;
+            color: #f1c40f;
+            font-weight: bold;
+            pointer-events: auto;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        .scoreboard-hb {
+            background: linear-gradient(180deg, #3a3f47, #1f232a);
+            border: 3px solid #555d6b;
+            border-radius: 12px;
+            padding: 4px 18px;
+            color: #a4e522;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: 900;
+            font-size: 26px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.7), inset 0 2px 4px rgba(255,255,255,0.2);
+            text-shadow: 0 0 8px rgba(164, 229, 34, 0.6);
+        }
+        .scoreboard-hb .timer {
+            color: #ffffff;
+            font-size: 20px;
+            text-shadow: none;
+            background: #11141a;
+            padding: 2px 8px;
+            border-radius: 6px;
+            border: 1px solid #444;
+        }
+        .btn-shop-open {
+            background: linear-gradient(135deg, #a4e522, #2ed573);
+            border: 2px solid #ffffff;
+            color: #090c10;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 800;
+            font-size: 13px;
+            cursor: pointer;
+            pointer-events: auto;
+            box-shadow: 0 4px 12px rgba(46, 213, 115, 0.4);
+            transition: transform 0.1s;
+        }
+        .btn-shop-open:active { transform: scale(0.95); }
+
+        /* Суперспособности справа вверху */
+        .powers-ui {
+            position: absolute;
+            top: 12px;
+            right: 140px;
+            display: flex;
+            gap: 10px;
+            z-index: 20;
+        }
+        .btn-power {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, #2980b9, #3498db);
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            color: #fff;
+            font-size: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: all 0.15s ease;
+        }
+        .btn-power:active { transform: scale(0.9); }
+        .btn-power.used {
+            opacity: 0.35;
+            filter: grayscale(1);
+            pointer-events: none;
+        }
+        #btn-bigball { background: linear-gradient(135deg, #e67e22, #d35400); }
+
+        /* Оранжевые сенсорные кнопки Head Ball 2 внизу */
+        .ui-controls {
+            position: absolute;
+            bottom: 10px;
+            left: 0; right: 0;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 20;
+            pointer-events: none;
+        }
+        .btn-group { display: flex; gap: 12px; pointer-events: auto; }
+        .btn-hb {
+            height: 52px;
+            min-width: 64px;
+            padding: 0 16px;
+            background: linear-gradient(180deg, #ff9f43, #ee5253);
+            border: 3px solid #fff;
+            border-radius: 16px;
+            color: #fff;
+            font-size: 22px;
+            font-weight: 900;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 6px 14px rgba(0,0,0,0.5), inset 0 2px 2px rgba(255,255,255,0.4);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.4);
+        }
+        .btn-hb:active { transform: translateY(3px); box-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+
+        /* Модальные окна */
+        .modal-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(5, 10, 20, 0.92);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: white;
+            backdrop-filter: blur(8px);
+            padding: 20px;
+        }
+        .modal-overlay h1 { font-size: 38px; margin-bottom: 10px; color: #f1c40f; }
+        .modal-overlay p { font-size: 20px; margin-bottom: 20px; color: #e2e8f0; }
+        .btn-main {
+            padding: 12px 32px;
+            font-size: 18px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #a4e522, #2ed573);
+            color: #090c10;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(46, 213, 115, 0.4);
+        }
+
+        /* Магазин Форм */
+        .shop-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            width: 100%;
+            max-width: 450px;
+            margin-bottom: 20px;
+        }
+        .shop-item {
+            background: rgba(255,255,255,0.08);
+            border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 12px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+        .shop-item.active { border-color: #a4e522; background: rgba(164, 229, 34, 0.15); }
+        .shop-item-title { font-weight: bold; font-size: 14px; }
+        .shop-item-preview { font-size: 28px; }
+        .btn-buy {
+            background: #f1c40f;
+            border: none;
+            color: #000;
+            padding: 4px 12px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .btn-equip {
+            background: #2ed573;
+            border: none;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 12px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="top-hud">
+        <div class="coins-badge">🪙 <span id="user-coins">0</span></div>
+        <div class="scoreboard-hb">
+            <span id="score-p1">0</span>
+            <span class="timer" id="match-timer">60</span>
+            <span id="score-p2">0</span>
+        </div>
+        <button class="btn-shop-open" onclick="openShop()">👕 Магазин</button>
+    </div>
+
+    <div class="powers-ui">
+        <div class="btn-power" id="btn-freeze" onclick="useFreeze()">❄️</div>
+        <div class="btn-power" id="btn-bigball" onclick="useBigBall()">🔥</div>
+    </div>
+
+    <div class="ui-controls">
+        <div class="btn-group">
+            <div class="btn-hb" id="btn-left">◄</div>
+            <div class="btn-hb" id="btn-right">►</div>
+        </div>
+        <div class="btn-group">
+            <div class="btn-hb" id="btn-kick-low">👟</div>
+            <div class="btn-hb" id="btn-jump">▲</div>
+            <div class="btn-hb btn-kick" id="btn-kick-high">👢</div>
+        </div>
+    </div>
+
+    <!-- Модалка окончания игры -->
+    <div class="modal-overlay" id="game-over-modal">
+        <h1 id="result-title">ПОБЕДА!</h1>
+        <p id="result-score">Счет: 3 - 1</p>
+        <button class="btn-main" onclick="restartMatch()">СЫГРАТЬ СНОВА</button>
+    </div>
+
+    <!-- Модалка Магазина -->
+    <div class="modal-overlay" id="shop-modal">
+        <h1>👕 Магазин Форм</h1>
+        <p>Выбирай форму для своей команды</p>
+        <div class="shop-grid" id="shop-items-container"></div>
+        <button class="btn-main" style="background: #74b9ff;" onclick="closeShop()">ЗАКРЫТЬ</button>
+    </div>
+</div>
+
+<script>
+// --- TELEGRAM WEBAPP СЧИТЫВАНИЕ ---
+const tg = window.Telegram?.WebApp;
+let telegramUser = { id: 0, first_name: 'Игрок 1' };
+if (tg) {
+    tg.ready();
+    tg.expand();
+    if (tg.initDataUnsafe?.user) telegramUser = tg.initDataUnsafe.user;
+}
+
+// --- СИНХРОНИЗАЦИЯ МОНЕТ ---
+let coinsFromUrl = null;
+try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const p = urlParams.get('coins');
+    if (p !== null && !isNaN(parseInt(p))) coinsFromUrl = parseInt(p);
+} catch (e) {}
+
+let userCoins = coinsFromUrl !== null ? coinsFromUrl : parseInt(localStorage.getItem('headball_coins') || '100');
+
+let unlockedKits = ['kit_levelup'];
+try { unlockedKits = JSON.parse(localStorage.getItem('headball_kits') || '["kit_levelup"]'); } catch(e) {}
+
+let currentKit = localStorage.getItem('headball_active_kit') || 'kit_levelup';
+
+const kitsCatalog = [
+    { id: 'kit_levelup', name: 'Level Up Team ⚡', price: 0, icon: '👕' }
+];
+
+function updateCoinsDisplay() {
+    const el = document.getElementById('user-coins');
+    if (el) el.innerText = userCoins;
+    try { localStorage.setItem('headball_coins', userCoins); } catch(e) {}
+}
+updateCoinsDisplay();
+
+// --- ЗВУКОВОЙ СИНТЕЗАТОР ---
+let audioCtx = null;
+function initAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+const soundFx = {
+    kick: () => {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.type = 'triangle'; osc.frequency.setValueAtTime(160, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+    },
+    whistle: () => {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.type = 'sine'; osc.frequency.setValueAtTime(2300, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(2550, audioCtx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+    },
+    goal: () => {
+        if (!audioCtx) return;
+        [261, 329, 392, 523].forEach((freq, idx) => {
+            const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+            osc.type = 'square'; osc.frequency.setValueAtTime(freq, audioCtx.currentTime + idx * 0.08);
+            gain.gain.setValueAtTime(0.18, audioCtx.currentTime + idx * 0.08);
+            gain.gain.exponentialRampToValueAtTime(0.01, idx * 0.08 + 0.25);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(audioCtx.currentTime + idx * 0.08); osc.stop(audioCtx.currentTime + idx * 0.08 + 0.25);
+        });
+    }
+};
+
+// --- СЕНСОРНОЕ УПРАВЛЕНИЕ ---
+const inputState = { left: false, right: false, jump: false, kickLow: false, kickHigh: false };
+function bindButton(id, stateKey) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const start = (e) => { e.preventDefault(); initAudio(); inputState[stateKey] = true; };
+    const end = (e) => { e.preventDefault(); inputState[stateKey] = false; };
+    el.addEventListener('touchstart', start, { passive: false });
+    el.addEventListener('touchend', end, { passive: false });
+    el.addEventListener('mousedown', start);
+    el.addEventListener('mouseup', end);
+}
+bindButton('btn-left', 'left');
+bindButton('btn-right', 'right');
+bindButton('btn-jump', 'jump');
+bindButton('btn-kick-low', 'kickLow');
+bindButton('btn-kick-high', 'kickHigh');
+
+// --- ИГРОВОЙ ДВИЖОК PHASER 3 ---
+const catDefault = 0x0001, catPlayer = 0x0002, catBall = 0x0004, catGoal = 0x0008;
+const GOAL_CROSSBAR_Y = 160; // Высокие ворота как на скрине 2
+
+const config = {
+    type: Phaser.AUTO,
+    width: 960, height: 450,
+    parent: 'game-container',
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    physics: { default: 'matter', matter: { gravity: { y: 0.85 }, debug: false } },
+    scene: { preload: preload, create: create, update: update }
+};
+
+let player, aiPlayer, ball;
+let playerVisual, aiVisual, playerBoot, aiBoot, playerKitSprite, iceOverlay;
+let centerAnnounceText;
+let cursors, spaceKey, currentScene;
+let score = { left: 0, right: 0 };
+let matchTime = 60, timerEvent;
+let gameState = 'countdown';
+let powersUsed = { freeze: false, bigBall: false }, isAiFrozen = false, isBallBig = false;
+
+function preload() {
+    this.load.image('char_base', './assets/character_base.png');
+    this.load.image('kit_levelup', './assets/kit_levelup.png');
+    this.load.image('boot_levelup', './assets/boot_levelup.png');
+    this.load.image('ball_levelup', './assets/ball_levelup.png');
+}
+
+function create() {
+    currentScene = this;
+    const world = this.matter.world;
+    world.setBounds(0, 0, 960, 450, 32, true, true, true, true);
+
+    this.input.keyboard.addCapture([
+        Phaser.Input.Keyboard.KeyCodes.UP, Phaser.Input.Keyboard.KeyCodes.DOWN,
+        Phaser.Input.Keyboard.KeyCodes.LEFT, Phaser.Input.Keyboard.KeyCodes.RIGHT, Phaser.Input.Keyboard.KeyCodes.SPACE
+    ]);
+    cursors = this.input.keyboard.createCursorKeys();
+    spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+    // --- ФОН СТАДИОНА И ТРИБУНЫ ---
+    const bgGfx = this.add.graphics();
+    bgGfx.fillGradientStyle(0x1a252f, 0x1a252f, 0x2c3e50, 0x2c3e50, 1);
+    bgGfx.fillRect(0, 0, 960, 200);
+
+    // Сетка рабица на фоне
+    bgGfx.lineStyle(1, 0xffffff, 0.12);
+    for (let x = -200; x < 1200; x += 20) {
+        bgGfx.lineBetween(x, 60, x + 160, 200);
+        bgGfx.lineBetween(x + 160, 60, x, 200);
+    }
+
+    // Трибуны с фанатами
+    for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 960; col += 14) {
+            let colHex = [0xff4757, 0x2ed573, 0x1e90ff, 0xf1c40f, 0xffffffff][Math.floor(Math.random() * 5)];
+            bgGfx.fillStyle(colHex, 0.65);
+            bgGfx.fillRect(col, 100 + row * 16, 10, 10);
+        }
+    }
+
+    // Трава поля (от y=200 до y=385)
+    this.add.rectangle(480, 292, 960, 185, 0x27ae60);
+
+    // ПОЛНОЕ ЗАКРЫТИЕ НИЖНЕЙ ЧАСТИ (ТЕМНО-КОРИЧНЕВЫЙ БОРДЮР СТАДИОНА ОТ y=385 ДО y=450)
+    this.add.rectangle(480, 417, 960, 65, 0x3d2314);
+    this.add.rectangle(480, 386, 960, 4, 0x1e8449); // Разделитель газон/земля
+
+    // Разметка поля (Штрафные площади, белые линии)
+    const fieldLines = this.add.graphics();
+    fieldLines.lineStyle(3, 0xffffff, 0.7);
+    fieldLines.lineBetween(480, 220, 480, 385); // Центральная линия
+    fieldLines.strokeCircle(480, 302, 55); // Центральный круг
+    fieldLines.strokeRect(10, 250, 135, 135); // Левая штрафная
+    fieldLines.strokeRect(815, 250, 135, 135); // Правая штрафная
+    fieldLines.lineBetween(10, 385, 950, 385); // Боковая линия газона
+
+    // Физическая земля под полем
+    const groundGfx = this.add.rectangle(480, 410, 960, 50, 0x000000, 0);
+    const ground = this.matter.add.gameObject(groundGfx, { isStatic: true, label: 'ground' });
+    ground.setCollisionCategory(catDefault);
+
+    // Постройка ворот точно по скриншоту 2
+    build2DGoal(this, true);
+    build2DGoal(this, false);
+
+    // --- КРУПНЫЙ ИГРОК ---
+    const playerGfx = this.add.circle(0, 0, 50, 0x000000, 0);
+    player = this.matter.add.gameObject(playerGfx, { shape: { type: 'circle', radius: 50 }, restitution: 0.2, friction: 0.1, label: 'player' });
+    player.setFixedRotation();
+    player.setCollisionCategory(catPlayer);
+
+    playerVisual = this.add.container(250, 310);
+    const pBase = this.textures.exists('char_base') 
+        ? this.add.image(0, -10, 'char_base').setDisplaySize(140, 165)
+        : this.add.circle(0, -10, 50, 0x2ed573);
+
+    playerKitSprite = this.textures.exists(currentKit)
+        ? this.add.image(0, 22, currentKit).setDisplaySize(125, 120)
+        : this.add.ellipse(0, 22, 40, 30, 0x1e90ff);
+
+    playerVisual.add([pBase, playerKitSprite]);
+
+    // Крупная бутса под ногами игрока
+    playerBoot = this.textures.exists('boot_levelup') 
+        ? this.add.image(250, 370, 'boot_levelup').setDisplaySize(68, 40).setOrigin(0.5, 0.8)
+        : this.add.circle(250, 370, 15, 0xf1c40f);
+
+    // --- КРУПНЫЙ БОТ ИИ ---
+    const aiGfx = this.add.circle(0, 0, 50, 0x000000, 0);
+    aiPlayer = this.matter.add.gameObject(aiGfx, { shape: { type: 'circle', radius: 50 }, restitution: 0.2, friction: 0.1, label: 'aiPlayer' });
+    aiPlayer.setFixedRotation();
+    aiPlayer.setCollisionCategory(catPlayer);
+
+    aiVisual = this.add.container(710, 310);
+    const aiBase = this.textures.exists('char_base')
+        ? this.add.image(0, -10, 'char_base').setDisplaySize(140, 165).setFlipX(true)
+        : this.add.circle(0, -10, 50, 0xff4757);
+
+    iceOverlay = this.add.circle(0, -10, 58, 0x74b9ff, 0.65).setStrokeStyle(4, 0x0984e3).setVisible(false);
+    aiVisual.add([aiBase, iceOverlay]);
+
+    // Крупная бутса под ногами бота
+    aiBoot = this.textures.exists('boot_levelup')
+        ? this.add.image(710, 370, 'boot_levelup').setDisplaySize(68, 40).setOrigin(0.5, 0.8).setFlipX(true)
+        : this.add.circle(710, 370, 15, 0xff4757);
+
+    // --- МЯЧ ---
+    const ballTextureKey = this.textures.exists('ball_levelup') ? 'ball_levelup' : 'ballTex';
+    ball = this.matter.add.image(480, 150, ballTextureKey, null, {
+        shape: { type: 'circle', radius: 21 },
+        restitution: 0.86, frictionAir: 0.005, density: 0.003, label: 'ball'
+    });
+    ball.setDisplaySize(42, 42);
+    ball.setFixedRotation();
+    ball.setCollisionCategory(catBall);
+    ball.setCollidesWith([catDefault, catPlayer, catGoal]);
+
+    centerAnnounceText = this.add.text(480, 180, '', { fontSize: '54px', color: '#f1c40f', fontStyle: 'bold' }).setOrigin(0.5);
+
+    resetAllPositions();
+    startMatchCountdown();
+}
+
+// Постройка реалистичных ворот со 3D-перспективой (как на скрине 2)
+function build2DGoal(scene, isLeft) {
+    const goalWidth = 125, crossbarY = GOAL_CROSSBAR_Y, groundY = 385;
+    const gfx = scene.add.graphics();
+    const startX = isLeft ? 0 : 960 - goalWidth;
+    const endX = isLeft ? goalWidth : 960;
+    const tipX = isLeft ? goalWidth : 960 - goalWidth;
+    const backX = isLeft ? 12 : 948;
+
+    // Грязь на газоне под воротами (worn dirt patch)
+    gfx.fillStyle(0x7e5229, 0.45);
+    gfx.fillEllipse(isLeft ? 60 : 900, groundY - 5, 120, 28);
+
+    // Белая сетка (диагональные ромбики)
+    gfx.lineStyle(1, 0xffffff, 0.4);
+    for (let x = startX; x <= endX; x += 12) gfx.lineBetween(x, crossbarY, x, groundY);
+    for (let y = crossbarY; y <= groundY; y += 14) gfx.lineBetween(startX, y, endX, y);
+
+    // Задний наклонный каркас ворот
+    gfx.lineStyle(3, 0xbdc3c7, 0.8);
+    gfx.lineBetween(backX, crossbarY + 15, tipX, crossbarY); // Наклон крыши
+    gfx.lineBetween(backX, crossbarY + 15, backX, groundY); // Задняя стойка
+    gfx.lineBetween(backX, groundY, tipX, groundY); // Нижняя боковая штанга
+
+    // Передняя главная рама ворот (Толстый белый металл)
+    gfx.lineStyle(7, 0xffffff, 1);
+    gfx.lineBetween(tipX, crossbarY, tipX, groundY); // Передняя вертикальная штанга
+    gfx.lineBetween(startX, crossbarY, tipX, crossbarY); // Главная перекладина
+
+    // Перекладина (физический круговой и прямоугольный коллайдер)
+    const postTip = scene.matter.add.circle(tipX, crossbarY, 9, { isStatic: true, label: 'crossbar', friction: 0.0, restitution: 0.9 });
+    postTip.collisionFilter = { category: catGoal, mask: catBall | catPlayer };
+
+    const barCenterX = isLeft ? (goalWidth / 2) - 4 : 960 - (goalWidth / 2) + 4;
+    const mainBar = scene.matter.add.rectangle(barCenterX, crossbarY, goalWidth - 8, 7, { isStatic: true, label: 'crossbar', friction: 0.0, restitution: 0.85 });
+    mainBar.collisionFilter = { category: catGoal, mask: catBall | catPlayer };
+}
+
+function resetAllPositions() {
+    const p1El = document.getElementById('score-p1');
+    const p2El = document.getElementById('score-p2');
+    if (p1El) p1El.innerText = score.left;
+    if (p2El) p2El.innerText = score.right;
+
+    player.setPosition(250, 310);
+    player.setVelocity(0, 0);
+
+    aiPlayer.setPosition(710, 310);
+    aiPlayer.setVelocity(0, 0);
+
+    ball.setPosition(480, 150);
+    ball.setVelocity(0, 0);
+    ball.setAngularVelocity(0);
+    ball.rotation = 0;
+}
+
+function onGoalScored() {
+    gameState = 'goal_pause';
+    centerAnnounceText.setText('ГОЛ!');
+    currentScene.time.delayedCall(1200, () => {
+        centerAnnounceText.setText('');
+        resetAllPositions();
+        gameState = 'playing';
+    });
+}
+
+function startMatchCountdown() {
+    gameState = 'countdown';
+    let count = 3;
+    centerAnnounceText.setText(count);
+    currentScene.time.addEvent({
+        delay: 1000, repeat: 3,
+        callback: () => {
+            count--;
+            if (count > 0) centerAnnounceText.setText(count);
+            else if (count === 0) { centerAnnounceText.setText('ПОЕХАЛИ!'); soundFx.whistle(); }
+            else { centerAnnounceText.setText(''); gameState = 'playing'; startMatchTimer(); }
+        }
+    });
+}
+
+function startMatchTimer() {
+    if (timerEvent) timerEvent.destroy();
+    timerEvent = currentScene.time.addEvent({
+        delay: 1000, repeat: matchTime - 1,
+        callback: () => {
+            matchTime--;
+            const timerEl = document.getElementById('match-timer');
+            if (timerEl) timerEl.innerText = matchTime;
+            if (matchTime <= 0) endMatch();
+        }
+    });
+}
+
+function endMatch() {
+    gameState = 'gameover';
+    ball.setVelocity(0, 0);
+    soundFx.whistle();
+
+    let resultStatus = 'draw', reward = 50;
+    if (score.left > score.right) { resultStatus = 'win'; reward = 100; }
+    else if (score.left < score.right) { resultStatus = 'lose'; reward = 20; }
+
+    userCoins += reward;
+    updateCoinsDisplay();
+
+    const titleEl = document.getElementById('result-title');
+    const scoreEl = document.getElementById('result-score');
+    const modalEl = document.getElementById('game-over-modal');
+
+    if (titleEl) titleEl.innerText = resultStatus === 'win' ? 'ПОБЕДА!' : (resultStatus === 'lose' ? 'ПОРАЖЕНИЕ' : 'НИЧЬЯ');
+    if (scoreEl) scoreEl.innerText = `Счет: ${score.left} - ${score.right} (+${reward} 🪙)`;
+    if (modalEl) modalEl.style.display = 'flex';
+
+    if (tg && tg.sendData) {
+        tg.sendData(JSON.stringify({
+            user_id: telegramUser.id,
+            player_score: score.left,
+            ai_score: score.right,
+            result: resultStatus,
+            coins: userCoins
+        }));
+    }
+}
+
+window.restartMatch = function() {
+    const modalEl = document.getElementById('game-over-modal');
+    if (modalEl) modalEl.style.display = 'none';
+    score = { left: 0, right: 0 }; matchTime = 60;
+    const timerEl = document.getElementById('match-timer');
+    if (timerEl) timerEl.innerText = '60';
+    powersUsed = { freeze: false, bigBall: false };
+    const btnFreeze = document.getElementById('btn-freeze');
+    const btnBigball = document.getElementById('btn-bigball');
+    if (btnFreeze) btnFreeze.classList.remove('used');
+    if (btnBigball) btnBigball.classList.remove('used');
+    isAiFrozen = false; iceOverlay.setVisible(false);
+    resetAllPositions();
+    startMatchCountdown();
+};
+
+window.useFreeze = function() {
+    initAudio();
+    if (powersUsed.freeze || gameState !== 'playing') return;
+    powersUsed.freeze = true;
+    const btnFreeze = document.getElementById('btn-freeze');
+    if (btnFreeze) btnFreeze.classList.add('used');
+    isAiFrozen = true; iceOverlay.setVisible(true);
+    currentScene.time.delayedCall(3500, () => { isAiFrozen = false; iceOverlay.setVisible(false); });
+};
+
+window.useBigBall = function() {
+    initAudio();
+    if (powersUsed.bigBall || gameState !== 'playing') return;
+    powersUsed.bigBall = true;
+    const btnBigball = document.getElementById('btn-bigball');
+    if (btnBigball) btnBigball.classList.add('used');
+    isBallBig = true; ball.setScale(2.0); currentScene.matter.body.scale(ball.body, 2.0, 2.0);
+    currentScene.time.delayedCall(5000, () => {
+        if (ball && ball.body) { ball.setScale(1.0); currentScene.matter.body.scale(ball.body, 0.5, 0.5); }
+        isBallBig = false;
+    });
+};
+
+function update() {
+    // Привязка визуалов персонажей и бутс снизу
+    playerVisual.setPosition(player.x, player.y);
+    playerBoot.setPosition(player.x, player.y + 60);
+    aiVisual.setPosition(aiPlayer.x, aiPlayer.y);
+    aiBoot.setPosition(aiPlayer.x, aiPlayer.y + 60);
+
+    ball.setAngularVelocity(0);
+    ball.rotation = 0;
+
+    // ЗАСЧИТЫВАНИЕ ГОЛОВ ПРИ ВХОЖДЕНИИ В ВОРОТА
+    if (gameState === 'playing') {
+        if (ball.x > 855 && ball.y > GOAL_CROSSBAR_Y - 10) {
+            score.left++;
+            soundFx.goal();
+            onGoalScored();
+        } else if (ball.x < 105 && ball.y > GOAL_CROSSBAR_Y - 10) {
+            score.right++;
+            soundFx.goal();
+            onGoalScored();
+        }
+    }
+
+    // Авто-сброс с перекладины ворот
+    [player, aiPlayer, ball].forEach(obj => {
+        if (!obj || !obj.body) return;
+        if (obj.x < 135 && obj.y < GOAL_CROSSBAR_Y + 15) {
+            obj.setVelocityX(8.5);
+            if (obj.y < GOAL_CROSSBAR_Y) obj.setVelocityY(-2.0);
+        }
+        if (obj.x > 825 && obj.y < GOAL_CROSSBAR_Y + 15) {
+            obj.setVelocityX(-8.5);
+            if (obj.y < GOAL_CROSSBAR_Y) obj.setVelocityY(-2.0);
+        }
+    });
+
+    if (gameState !== 'playing') return;
+
+    const speed = 5.2;
+    const moveLeft = cursors.left.isDown || inputState.left;
+    const moveRight = cursors.right.isDown || inputState.right;
+    const moveUp = cursors.up.isDown || inputState.jump;
+    const isKickingLow = inputState.kickLow || cursors.down.isDown;
+    const isKickingHigh = inputState.kickHigh || Phaser.Input.Keyboard.JustDown(spaceKey);
+
+    if (moveLeft) player.setVelocityX(-speed);
+    else if (moveRight) player.setVelocityX(speed);
+
+    if (moveUp && player.y > 300) { player.setVelocityY(-11.0); inputState.jump = false; }
+
+    // Анимация удара бутсой
+    if (isKickingLow || isKickingHigh) {
+        currentScene.tweens.add({ targets: playerBoot, angle: -55, duration: 85, yoyo: true });
+        const distToBall = Phaser.Math.Distance.Between(player.x, player.y + 30, ball.x, ball.y);
+        
+        if (distToBall < 135) {
+            let vx = 15.0, vy = -5.0;
+            if (isKickingHigh) { vx = 12.0; vy = -12.5; } // Верховой
+            else if (isKickingLow) { vx = 20.0; vy = -1.8; } // Низовой
+
+            ball.setVelocity(vx, vy);
+            soundFx.kick();
+        }
+        inputState.kickLow = false;
+        inputState.kickHigh = false;
+    }
+
+    if (!isAiFrozen) updateAIBot();
+    else aiPlayer.setVelocity(0, 0);
+}
+
+function updateAIBot() {
+    const aiSpeed = 2.8, homeX = 750;
+    if (ball.x > 500) {
+        if (ball.x < aiPlayer.x - 20) aiPlayer.setVelocityX(-aiSpeed);
+        else if (ball.x > aiPlayer.x + 20) aiPlayer.setVelocityX(aiSpeed);
+    } else {
+        if (aiPlayer.x < homeX - 10) aiPlayer.setVelocityX(aiSpeed);
+        else if (aiPlayer.x > homeX + 10) aiPlayer.setVelocityX(-aiSpeed);
+    }
+
+    const distToBall = Phaser.Math.Distance.Between(aiPlayer.x, aiPlayer.y, ball.x, ball.y);
+    if (distToBall < 105 && ball.y < aiPlayer.y && aiPlayer.y > 300 && Math.random() < 0.25) aiPlayer.setVelocityY(-11.0);
+
+    if (distToBall < 95 && Math.random() < 0.04) {
+        currentScene.tweens.add({ targets: aiBoot, angle: 55, duration: 85, yoyo: true });
+        let aiVx = -13.0, aiVy = -5.0;
+        const randType = Math.random();
+        if (randType < 0.35) { aiVx = -10.0; aiVy = -11.0; }
+        else if (randType < 0.70) { aiVx = -17.0; aiVy = -2.0; }
+        
+        ball.setVelocity(aiVx, aiVy);
+        soundFx.kick();
+    }
+}
+
+// --- ЛОГИКА МАГАЗИНА ФОРМ ---
+function openShop() {
+    renderShopItems();
+    const modalEl = document.getElementById('shop-modal');
+    if (modalEl) modalEl.style.display = 'flex';
+}
+function closeShop() {
+    const modalEl = document.getElementById('shop-modal');
+    if (modalEl) modalEl.style.display = 'none';
+}
+
+function renderShopItems() {
+    const container = document.getElementById('shop-items-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    kitsCatalog.forEach(k => {
+        const isUnlocked = unlockedKits.includes(k.id);
+        const isActive = currentKit === k.id;
+
+        const itemEl = document.createElement('div');
+        itemEl.className = `shop-item ${isActive ? 'active' : ''}`;
+        
+        let actionBtn = '';
+        if (isActive) {
+            actionBtn = '<span style="color:#a4e522; font-size:12px; font-weight:bold;">Надето</span>';
+        } else if (isUnlocked) {
+            actionBtn = `<button class="btn-equip" onclick="equipKit('${k.id}')">Надеть</button>`;
+        } else {
+            actionBtn = `<button class="btn-buy" onclick="buyKit('${k.id}', ${k.price})">${k.price} 🪙</button>`;
+        }
+
+        itemEl.innerHTML = `
+            <div class="shop-item-preview">${k.icon}</div>
+            <div class="shop-item-title">${k.name}</div>
+            ${actionBtn}
+        `;
+        container.appendChild(itemEl);
+    });
+}
+
+window.buyKit = function(kitId, price) {
+    if (userCoins >= price) {
+        userCoins -= price;
+        unlockedKits.push(kitId);
+        try { localStorage.setItem('headball_kits', JSON.stringify(unlockedKits)); } catch(e){}
+        updateCoinsDisplay();
+        equipKit(kitId);
+    } else {
+        alert('Не хватает монет!');
+    }
+};
+
+window.equipKit = function(kitId) {
+    currentKit = kitId;
+    try { localStorage.setItem('headball_active_kit', kitId); } catch(e){}
+    if (playerKitSprite && currentScene.textures.exists(kitId)) {
+        playerKitSprite.setTexture(kitId);
+    }
+    renderShopItems();
+};
+
+const game = new Phaser.Game(config);
+</script>
+</body>
+</html>
